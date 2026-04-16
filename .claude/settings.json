@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Session ended. Checklist: (1) Remove secrets/tokens from code (2) Check .gitignore covers config.yaml, .env, __pycache__, data/ (3) git status -> stage & commit -> git push origin main\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

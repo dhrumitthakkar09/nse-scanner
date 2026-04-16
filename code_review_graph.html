@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>NSE Dashboard v2 — Code Review Graph</title>
+<style>
+:root{
+  --bg:#080c16;--bg2:#0e1525;--bg3:#162035;--bg4:#1e2a45;
+  --bdr:#25335a;--bdr2:#344470;
+  --tx:#dde6f8;--tx2:#8aa0cc;--tx3:#4d6090;
+  --ac:#4d8ef7;--gr:#34d399;--gr2:#10b981;--gr-bg:#052e1c;
+  --rd:#f87171;--rd-bg:#2a0808;
+  --or:#fbbf24;--or-bg:#2c1800;
+  --ff:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
+  --r:10px;--r2:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--ff);background:var(--bg);color:var(--tx);font-size:14px;line-height:1.5;min-height:100vh}
+
+/* ── HEADER ── */
+.hdr{background:var(--bg2);border-bottom:1px solid var(--bdr);padding:14px 28px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.hdr-logo{font-size:16px;font-weight:800;color:var(--tx);letter-spacing:-.03em}
+.hdr-sub{font-size:11px;color:var(--tx3)}
+.hdr-stats{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
+.stat-pill{background:var(--bg3);border:1px solid var(--bdr);border-radius:20px;padding:4px 12px;font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.stat-pill .val{font-family:var(--mono);font-weight:700}
+.pill-files .val{color:var(--ac)}
+.pill-loc   .val{color:var(--or)}
+.pill-issues .val{color:var(--rd)}
+.pill-ok .val{color:var(--gr)}
+
+/* ── MAIN LAYOUT ── */
+.main{display:grid;grid-template-columns:1fr 340px;gap:0;border-bottom:1px solid var(--bdr)}
+@media(max-width:1100px){.main{grid-template-columns:1fr}}
+
+/* ── GRAPH PANEL ── */
+.graph-panel{padding:22px 24px;border-right:1px solid var(--bdr)}
+.section-hdr{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section-hdr::after{content:'';flex:1;height:1px;background:var(--bdr)}
+#arch-svg{width:100%;height:auto;display:block}
+
+/* ── LEGEND ── */
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--tx2)}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.leg-line{width:24px;height:2px;flex-shrink:0}
+.leg-dashed{background:repeating-linear-gradient(90deg,#f97316 0,#f97316 4px,transparent 4px,transparent 8px);height:2px;width:24px}
+.leg-dashed-r{background:repeating-linear-gradient(90deg,#ef4444 0,#ef4444 4px,transparent 4px,transparent 8px);height:2px;width:24px}
+
+/* ── DETAIL PANEL ── */
+.detail-panel{padding:20px;overflow-y:auto;max-height:620px}
+.dp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--tx3);text-align:center;gap:10px;padding:40px}
+.dp-empty .dp-ico{font-size:36px;opacity:.4}
+.dp-empty .dp-hint{font-size:11.5px;line-height:1.6}
+.dp-header{margin-bottom:14px}
+.dp-file{font-family:var(--mono);font-size:11px;color:var(--tx3);margin-bottom:4px}
+.dp-name{font-size:16px;font-weight:800;color:var(--tx);margin-bottom:6px}
+.dp-type-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.dp-meta{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+.dp-meta-item{background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:6px 11px;text-align:center}
+.dp-meta-lbl{font-size:9.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.dp-meta-val{font-size:15px;font-weight:800;font-family:var(--mono);margin-top:2px}
+.dp-section{margin-top:14px}
+.dp-section-title{font-size:10.5px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--bdr)}
+.dp-fn{font-size:11.5px;padding:4px 0;color:var(--tx2);display:flex;gap:6px;align-items:flex-start}
+.dp-fn-name{font-family:var(--mono);color:var(--ac);font-size:11px;flex-shrink:0}
+.dp-fn-desc{color:var(--tx3);font-size:10.5px}
+.dp-issue{font-size:11px;padding:5px 8px;border-radius:5px;margin-bottom:4px;display:flex;gap:6px;align-items:flex-start}
+.dp-issue.high{background:#2a0808;border-left:3px solid #ef4444;color:#fca5a5}
+.dp-issue.med {background:#2c1800;border-left:3px solid #f97316;color:#fed7aa}
+.dp-issue.low {background:#162035;border-left:3px solid #4d6090;color:#8aa0cc}
+.dp-issue .sev{font-size:9.5px;font-weight:700;text-transform:uppercase;flex-shrink:0;margin-top:1px}
+.dp-dep-chip{display:inline-block;padding:2px 7px;border-radius:4px;background:var(--bg3);border:1px solid var(--bdr);font-size:10px;font-family:var(--mono);color:var(--tx2);margin:2px}
+
+/* ── MODULE CARDS ── */
+.cards-section{padding:22px 24px}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.mod-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:13px 14px;cursor:pointer;transition:all .18s;position:relative;overflow:hidden}
+.mod-card:hover{transform:translateY(-2px);box-shadow:0 6px 22px rgba(0,0,0,.5);border-color:var(--bdr2)}
+.mod-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.mod-card-file{font-size:9.5px;font-family:var(--mono);color:var(--tx3);margin-bottom:4px}
+.mod-card-name{font-size:12.5px;font-weight:700;color:var(--tx);margin-bottom:8px}
+.mod-card-stats{display:flex;justify-content:space-between;align-items:center}
+.mod-card-loc{font-size:10px;color:var(--tx3)}
+.mod-card-loc span{font-family:var(--mono);color:var(--tx2);font-weight:600}
+.issue-badge{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-size:10px;font-weight:700;font-family:var(--mono)}
+.ib-0{background:var(--gr-bg);color:var(--gr)}
+.ib-1,.ib-2{background:var(--or-bg);color:var(--or)}
+.ib-3,.ib-4{background:#2a1a00;color:#fb923c}
+.ib-5,.ib-6,.ib-7{background:var(--rd-bg);color:var(--rd)}
+
+/* ── ISSUES TABLE ── */
+.issues-section{padding:0 24px 32px}
+.issues-table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden}
+.issues-table thead th{padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--bdr2);font-size:10.5px;font-weight:700;color:var(--tx3);text-align:left;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.issues-table tbody td{padding:9px 14px;font-size:12px;border-bottom:1px solid var(--bdr);vertical-align:middle}
+.issues-table tbody tr:last-child td{border-bottom:none}
+.issues-table tbody tr:hover{background:var(--bg3)}
+.sev-chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:9.5px;font-weight:700;text-transform:uppercase}
+.sev-high{background:#3a0808;color:#f87171}
+.sev-med {background:#2c1800;color:#fb923c}
+.sev-low {background:#162035;color:#64748b}
+.mod-chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:9.5px;font-weight:700;font-family:var(--mono)}
+td.fix-col{font-size:11px;color:var(--tx3)}
+td.fix-col code{font-family:var(--mono);font-size:10.5px;color:var(--tx2);background:var(--bg3);padding:1px 5px;border-radius:3px}
+
+/* ── SVG NODES ── */
+.node-group{cursor:pointer}
+.node-group circle.node-bg{transition:filter .15s,stroke-width .15s}
+.node-group:hover circle.node-bg{filter:brightness(1.25);stroke-width:3}
+.node-group.selected circle.node-bg{stroke-width:3;filter:brightness(1.35)}
+.node-label{font-family:var(--ff);pointer-events:none;dominant-baseline:middle;text-anchor:middle}
+.edge-path{transition:stroke-opacity .15s,stroke-width .15s}
+</style>
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+<div class="hdr">
+  <div>
+    <div class="hdr-logo">NSE Dashboard v2 · Code Review Graph</div>
+    <div class="hdr-sub">Architecture · Dependencies · Quality · Issues</div>
+  </div>
+  <div class="hdr-stats">
+    <div class="stat-pill pill-files"><span>Files</span><span class="val">12</span></div>
+    <div class="stat-pill pill-loc"><span>Total LOC</span><span class="val">2,207</span></div>
+    <div class="stat-pill pill-issues"><span>Issues</span><span class="val">34</span></div>
+    <div class="stat-pill pill-ok"><span>Pure Modules</span><span class="val">3</span></div>
+  </div>
+</div>
+
+<!-- ══ GRAPH + DETAIL ══ -->
+<div class="main">
+
+  <!-- Architecture SVG -->
+  <div class="graph-panel">
+    <div class="section-hdr">Module Dependency Graph &nbsp;·&nbsp; click any node for details</div>
+    <svg id="arch-svg" viewBox="0 0 980 540" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <polygon points="0 0,7 3.5,0 7" fill="#344470"/>
+        </marker>
+        <marker id="arr-call" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <polygon points="0 0,7 3.5,0 7" fill="#4d8ef7"/>
+        </marker>
+        <marker id="arr-state" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <polygon points="0 0,7 3.5,0 7" fill="#f97316"/>
+        </marker>
+        <marker id="arr-mut" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <polygon points="0 0,7 3.5,0 7" fill="#ef4444"/>
+        </marker>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+        </filter>
+      </defs>
+      <g id="edges-g"></g>
+      <g id="nodes-g"></g>
+    </svg>
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:#3b82f6"></div>Bootstrap</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#64748b"></div>Config</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#f59e0b"></div>Data / Loader</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#10b981"></div>Pure Logic</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#8b5cf6"></div>Orchestrator</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#ec4899"></div>Service</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#06b6d4"></div>Web API</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#0ea5e9"></div>Frontend</div>
+      <div style="width:1px;background:var(--bdr);margin:0 4px"></div>
+      <div class="leg-item"><div class="leg-line" style="background:#4d8ef7;height:2px"></div>Call / Import</div>
+      <div class="leg-item"><div class="leg-dashed"></div>Shared State</div>
+      <div class="leg-item"><div class="leg-dashed-r"></div>Mutates Config</div>
+      <div class="leg-item">
+        <div style="width:10px;height:10px;border-radius:50%;background:#ef4444;font-size:7px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">!</div>
+        Issue count
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Panel -->
+  <div class="detail-panel" id="detail-panel">
+    <div class="dp-empty">
+      <div class="dp-ico">🔍</div>
+      <div class="dp-hint">Click any module in the graph<br>to see its details, functions,<br>dependencies, and issues.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODULE CARDS ══ -->
+<div class="cards-section">
+  <div class="section-hdr">Module Quality Overview</div>
+  <div class="cards-grid" id="cards-grid"></div>
+</div>
+
+<!-- ══ ISSUES CATALOG ══ -->
+<div class="issues-section">
+  <div class="section-hdr">Issue Catalog &nbsp;·&nbsp; <span id="issue-filter-label">all 34 issues</span></div>
+  <table class="issues-table">
+    <thead>
+      <tr>
+        <th>Severity</th>
+        <th>Module</th>
+        <th>Issue</th>
+        <th>Fix Suggestion</th>
+      </tr>
+    </thead>
+    <tbody id="issues-tbody"></tbody>
+  </table>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+//  DATA
+// ════════════════════════════════════════════════════════
+
+const TYPE_COLOR = {
+  bootstrap:    '#3b82f6',
+  config:       '#64748b',
+  data:         '#f59e0b',
+  logic:        '#10b981',
+  orchestrator: '#8b5cf6',
+  service:      '#ec4899',
+  web:          '#06b6d4',
+  frontend:     '#0ea5e9',
+};
+
+const MODULES = [
+  {
+    id:'entry', file:'nse_dashboard_v2.py', name:'Entry Point',
+    type:'bootstrap', lines:43, layer:0,
+    x:72, y:270, r:20,
+    desc:'Application bootstrap — spawns 3 daemon threads and starts Flask on port 5050.',
+    fns:[
+      {name:'__main__', desc:'Prints banner, starts scrip_master.load, run_scan, sched_loop threads, then app.run()'},
+    ],
+    deps:['web/routes','scanner/runner','data/scrip_master','scanner/alerts','config/settings'],
+    issues:[
+      {sev:'med',  text:'warnings.filterwarnings("ignore") suppresses all Python warnings — can mask real runtime errors.'},
+      {sev:'low',  text:'Port 5050 is hardcoded; not configurable without code change.'},
+    ]
+  },
+  {
+    id:'settings', file:'config/settings.py', name:'Config / Settings',
+    type:'config', lines:86, layer:1,
+    x:240, y:110, r:21,
+    desc:'Central config — holds mutable CONFIG and CREDENTIALS dicts, YAML helpers, and constants.',
+    fns:[
+      {name:'load_yaml()',    desc:'Load config from first found YAML candidate path'},
+      {name:'save_yaml(cfg)', desc:'Persist config to first writable path'},
+      {name:'get_yaml_path()',desc:'Return path of first existing config file'},
+    ],
+    deps:[],
+    issues:[
+      {sev:'high', text:'CONFIG and CREDENTIALS mutated by Flask threads WITHOUT a lock — race condition possible under concurrent requests.'},
+      {sev:'med',  text:'Bare except in save_yaml() silently swallows all save errors; caller never knows save failed.'},
+      {sev:'low',  text:'Hardcoded Windows path "D:/PythonProjects/dhan/config.yaml" — breaks on non-Windows or different environments.'},
+    ]
+  },
+  {
+    id:'sectors', file:'config/sectors.py', name:'Config / Sectors',
+    type:'config', lines:22, layer:1,
+    x:240, y:265, r:15,
+    desc:'Pure data — maps 12 sector labels to Dhan index names (e.g. "Bank" → "NIFTY BANK").',
+    fns:[],
+    deps:[],
+    issues:[]
+  },
+  {
+    id:'stocks', file:'config/stocks.py', name:'Config / Stocks',
+    type:'config', lines:111, layer:1,
+    x:240, y:420, r:22,
+    desc:'Defines the 220-stock F&O universe, sector → symbols map, and flat ALL_STOCKS / STOCK_SECTOR_MAP.',
+    fns:[
+      {name:'FNO_STOCKS',       desc:'dict: sector → [symbol list] — 12 sectors, 220 stocks'},
+      {name:'ALL_STOCKS',       desc:'Flat deduplicated list built at import time'},
+      {name:'STOCK_SECTOR_MAP', desc:'Reverse dict: symbol → sector, built at import time'},
+    ],
+    deps:[],
+    issues:[
+      {sev:'low', text:'Module-level side-effect loop runs on every import — ALL_STOCKS is rebuilt each time the module is imported.'},
+      {sev:'low', text:'PIDILITIND, ASIANPAINT, BERGEPAINT appear in multiple sector dicts; first occurrence silently wins in STOCK_SECTOR_MAP.'},
+    ]
+  },
+  {
+    id:'scrip', file:'data/scrip_master.py', name:'Scrip Master',
+    type:'data', lines:146, layer:2,
+    x:430, y:110, r:24,
+    desc:'Downloads Dhan scrip master CSV and builds EQUITY_MAP (symbol→securityId) and INDEX_MAP for all scans.',
+    fns:[
+      {name:'load()',          desc:'Download CSV, parse, populate EQUITY_MAP and INDEX_MAP (thread-safe, idempotent)'},
+      {name:'ensure()',        desc:'Call load() if not already loaded'},
+      {name:'equity_info(sym)',desc:'Lookup equity by symbol; tries exact and sym+"-EQ" fallback'},
+      {name:'index_info(name)',desc:'Lookup index by name; exact match then substring fallback'},
+    ],
+    deps:['config/settings'],
+    issues:[
+      {sev:'high', text:'If CSV download fails, EQUITY_MAP stays empty but _loaded=True — all subsequent lookups silently return None, breaking the entire scan.'},
+      {sev:'med',  text:'Bare except on CSV parsing; logging.warning logged but app continues with empty maps.'},
+      {sev:'low',  text:'Column detection is fragile — tries multiple known column names; a Dhan CSV schema change will break silently.'},
+    ]
+  },
+  {
+    id:'fetcher', file:'data/fetcher.py', name:'Data Fetcher',
+    type:'data', lines:98, layer:2,
+    x:430, y:280, r:22,
+    desc:'High-level batch fetch helpers — wraps dhan_api with rate-limiting sleeps and symbol-lookup callbacks.',
+    fns:[
+      {name:'ist_now()',                desc:'Current datetime in IST'},
+      {name:'is_market_open()',         desc:'True if current time is within NSE session (9:15–15:30, weekdays)'},
+      {name:'fetch_intraday_ohlcv(…)',  desc:'Batch 15-min OHLCV for symbol list; skips symbols with no security_id'},
+      {name:'fetch_ath(…)',             desc:'Batch 5-year ATH (max daily High) for symbol list'},
+    ],
+    deps:['data/dhan_api','config/settings'],
+    issues:[
+      {sev:'low', text:'Symbols with no security_id are silently skipped (no warning log) — hard to diagnose missing data.'},
+      {sev:'low', text:'Duck-typed Callable parameters have no static validation; wrong function signature causes silent failure.'},
+    ]
+  },
+  {
+    id:'dhan_api', file:'data/dhan_api.py', name:'Dhan API',
+    type:'data', lines:131, layer:2,
+    x:430, y:450, r:24,
+    desc:'Thin HTTP wrappers for Dhan HQ v2 API — intraday candles and historical daily data.',
+    fns:[
+      {name:'_headers()',          desc:'Build auth headers from CREDENTIALS (read at call time)'},
+      {name:'fetch_intraday(…)',   desc:'POST /v2/charts/intraday → 15-min OHLCV DataFrame'},
+      {name:'fetch_historical(…)', desc:'POST /v2/charts/historical → daily High pd.Series'},
+    ],
+    deps:['config/settings'],
+    issues:[
+      {sev:'med', text:'HTTP errors only logged at DEBUG level — invisible in default logging config; failures are silently swallowed.'},
+      {sev:'low', text:'No retry logic on transient HTTP failures (connection reset, 5xx errors).'},
+    ]
+  },
+  {
+    id:'core', file:'scanner/core.py', name:'Scanner Core',
+    type:'logic', lines:94, layer:3,
+    x:618, y:160, r:22,
+    desc:'Pure, side-effect-free scanner calculations — all deterministic given the same inputs.',
+    fns:[
+      {name:'resample75(df)',              desc:'Resample 15-min OHLCV to 75-min candles aligned to NSE open (9:15)'},
+      {name:'near_ath(price, ath)',         desc:'Check if price is within configured ATH band; returns (qualifies, dist_pct)'},
+      {name:'is_consolidating(hi, lo, n)', desc:'Check if last n candles form a tight consolidation; returns (ok, range_pct)'},
+      {name:'avg_volume(vol, n)',           desc:'Average volume over last n candles (min 5 required)'},
+      {name:'ema(series, period)',          desc:'Exponential moving average with span = period'},
+    ],
+    deps:['config/settings'],
+    issues:[
+      {sev:'low', text:'near_ath uses rounded distance for display but exact float comparison for qualification — minor inconsistency near band edges.'},
+    ]
+  },
+  {
+    id:'runner', file:'scanner/runner.py', name:'Scanner Runner',
+    type:'orchestrator', lines:256, layer:3,
+    x:618, y:340, r:30,
+    desc:'Scan orchestrator — 4-phase scan pipeline, shared state management, background scheduler.',
+    fns:[
+      {name:'_log(msg)',     desc:'Append timestamped line to state["log"] and stdout'},
+      {name:'run_scan()',    desc:'Full 4-phase scan: sector ATH → sector intraday → stock ATH → stock intraday+qualify; updates shared state'},
+      {name:'sched_loop()', desc:'Infinite loop: sleep scan_interval_minutes, spawn run_scan thread'},
+      {name:'_today_candles(df)', desc:'Helper: filter DataFrame to today\'s NSE session (9:15–15:30 IST)'},
+    ],
+    deps:['data/fetcher','data/scrip_master','scanner/core','scanner/alerts','config/settings','config/sectors','config/stocks'],
+    issues:[
+      {sev:'high', text:'3× bare except: Exception clauses in sector loop, stock loop, and intraday loop silently discard errors — failed stocks vanish without any log.'},
+      {sev:'high', text:'_prev_qualified global set is read and written without _lock — race condition if run_scan is called concurrently.'},
+      {sev:'med',  text:'CONFIG dict is read without a lock (shared with routes mutations) — concurrent settings change and scan read can produce inconsistent scan params.'},
+      {sev:'low',  text:'_today_candles() duplicates timezone conversion logic already present in resample75() — single helper in core.py would be cleaner.'},
+      {sev:'low',  text:'next_scan time shown in UI is computed as now+15min; does not reflect actual sched_loop sleep start time.'},
+      {sev:'low',  text:'Scan count incremented before scan completes — on error scan count still advances.'},
+    ]
+  },
+  {
+    id:'alerts', file:'scanner/alerts.py', name:'Alerts',
+    type:'service', lines:83, layer:3,
+    x:618, y:500, r:21,
+    desc:'Telegram alert sender — fires on new qualifying stocks; supports test_connection().',
+    fns:[
+      {name:'is_configured()',          desc:'Check if bot_token and chat_id are set and non-placeholder'},
+      {name:'send_new_signals(stocks)', desc:'Format and send MarkdownV2 message for new qualified stocks'},
+      {name:'test_connection()',        desc:'Send test message; returns (success, error_str)'},
+    ],
+    deps:['config/settings'],
+    issues:[
+      {sev:'med', text:'Bare except in send_new_signals() — if Telegram API returns an error, it is silently swallowed; no retry, no user notification.'},
+      {sev:'med', text:'MarkdownV2 escaping is manual and incomplete — special chars in stock names (e.g. & in M&M) may cause Telegram API parse errors.'},
+      {sev:'low', text:'No retry on transient network failures to Telegram API.'},
+    ]
+  },
+  {
+    id:'routes', file:'web/routes.py', name:'Web Routes',
+    type:'web', lines:112, layer:4,
+    x:808, y:230, r:23,
+    desc:'Flask HTTP API — exposes /api/data, /api/scan, /api/settings, /api/test-telegram, and the dashboard UI.',
+    fns:[
+      {name:'api_data()',          desc:'GET /api/data — return full scanner state (thread-safe via _lock)'},
+      {name:'api_scan()',          desc:'POST /api/scan — spawn run_scan in a new daemon thread'},
+      {name:'api_settings_get()',  desc:'GET /api/settings — return current CONFIG + CREDENTIALS from YAML'},
+      {name:'api_settings_post()', desc:'POST /api/settings — update CONFIG and CREDENTIALS; persist to YAML'},
+      {name:'api_test_telegram()', desc:'POST /api/test-telegram — fire test Telegram message'},
+      {name:'index()',             desc:'GET / — render dashboard HTML template string'},
+    ],
+    deps:['scanner/runner','config/settings','scanner/alerts','web/template'],
+    issues:[
+      {sev:'high', text:'No authentication or authorization on any endpoint — anyone on the network can change Dhan credentials or trigger scans.'},
+      {sev:'high', text:'CONFIG dict mutated by Flask worker threads WITHOUT a lock — concurrent POST /api/settings requests can corrupt CONFIG.'},
+      {sev:'med',  text:'save_yaml() failure is silently ignored; client receives {"ok":true} even when settings were not persisted to disk.'},
+      {sev:'med',  text:'No input range validation on numeric settings — negative scan intervals, zero volumes etc. are accepted silently.'},
+      {sev:'low',  text:'Bare except on int/float conversions silently ignores malformed input.'},
+    ]
+  },
+  {
+    id:'template', file:'web/template.py', name:'Web Template',
+    type:'frontend', lines:935, layer:4,
+    x:808, y:460, r:38,
+    desc:'Single-file HTML/CSS/JS dashboard — 935-line string constant serving the complete UI.',
+    fns:[
+      {name:'renderStrip()',        desc:'Render sector pulse chip strip'},
+      {name:'renderIntradayHmap()', desc:'Render intraday sector heatmap (green/red cells)'},
+      {name:'renderIntradayGL()',   desc:'Render top-10 intraday gainers and losers for all F&O stocks'},
+      {name:'renderRows()',         desc:'Rebuild qualified stocks table on every filter'},
+      {name:'fetchData()',          desc:'Poll /api/data every 5 s and update all UI sections'},
+      {name:'triggerScan()',        desc:'POST /api/scan, then call fetchData after 500 ms'},
+    ],
+    deps:['web/routes (HTTP)'],
+    issues:[
+      {sev:'high', text:'XSS risk: stock names are directly interpolated into table innerHTML without HTML-escaping — a stock name containing <script> would execute.'},
+      {sev:'high', text:'No CSRF protection on POST /api/scan and /api/settings — cross-site requests from any origin are accepted.'},
+      {sev:'med',  text:'Global JS variables (allStocks, allSectors, sortCol, etc.) — no namespace or module isolation.'},
+      {sev:'med',  text:'Inline event handlers (onclick="triggerScan()") are CSP-unsafe and hard to unit-test.'},
+      {sev:'low',  text:'fetch() errors are silently caught (console.error only); user sees stale data with no visible error state.'},
+    ]
+  },
+];
+
+const EDGES = [
+  // Entry bootstraps
+  {s:'entry', t:'routes',   type:'import', label:'Flask app'},
+  {s:'entry', t:'runner',   type:'import', label:'threads'},
+  {s:'entry', t:'scrip',    type:'import', label:'load()'},
+  {s:'entry', t:'alerts',   type:'import', label:'is_configured()'},
+
+  // All modules read settings (config hub) — thin lines
+  {s:'settings', t:'scrip',    type:'cfg', label:''},
+  {s:'settings', t:'fetcher',  type:'cfg', label:''},
+  {s:'settings', t:'dhan_api', type:'cfg', label:''},
+  {s:'settings', t:'core',     type:'cfg', label:''},
+  {s:'settings', t:'runner',   type:'cfg', label:''},
+
+  // Runner reads config data
+  {s:'sectors', t:'runner', type:'cfg', label:''},
+  {s:'stocks',  t:'runner', type:'cfg', label:''},
+
+  // Data pipeline (main flow)
+  {s:'runner',  t:'fetcher',  type:'call', label:'fetch_*'},
+  {s:'runner',  t:'scrip',    type:'call', label:'ensure()'},
+  {s:'runner',  t:'core',     type:'call', label:'resample/ema'},
+  {s:'runner',  t:'alerts',   type:'call', label:'send_signals()'},
+  {s:'fetcher', t:'dhan_api', type:'call', label:'fetch_*()'},
+
+  // Web layer
+  {s:'routes',  t:'runner',   type:'state',  label:'state / _lock'},
+  {s:'routes',  t:'settings', type:'mutate', label:'CONFIG ←'},
+  {s:'routes',  t:'alerts',   type:'call',   label:'test_conn()'},
+  {s:'routes',  t:'template', type:'call',   label:'render()'},
+];
+
+// ════════════════════════════════════════════════════════
+//  GRAPH RENDERING
+// ════════════════════════════════════════════════════════
+
+function getModule(id){ return MODULES.find(m=>m.id===id); }
+
+function edgePath(src, dst, offset=0){
+  const dx = dst.x - src.x, dy = dst.y - src.y;
+  const dist = Math.sqrt(dx*dx+dy*dy);
+  if(dist===0) return '';
+  const ux = dx/dist, uy = dy/dist;
+  const sx = src.x + src.r*ux, sy = src.y + src.r*uy;
+  const ex = dst.x - dst.r*ux, ey = dst.y - dst.r*uy;
+  // Perpendicular offset for parallel edges
+  const px = -uy*offset, py = ux*offset;
+  const mx = (sx+ex)/2 + px, my = (sy+ey)/2 + py;
+  const bend = Math.max(30, dist*0.25);
+  const cp1x = sx + dx*0.3 + px*0.5, cp1y = sy + dy*0.3 + py*0.5;
+  const cp2x = ex - dx*0.3 + px*0.5, cp2y = ey - dy*0.3 + py*0.5;
+  return `M${sx.toFixed(1)},${sy.toFixed(1)} C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}`;
+}
+
+function renderGraph(){
+  const svg = document.getElementById('arch-svg');
+  const eG  = document.getElementById('edges-g');
+  const nG  = document.getElementById('nodes-g');
+
+  // Draw edges
+  EDGES.forEach((e,i)=>{
+    const src = getModule(e.s);
+    const dst = getModule(e.t);
+    if(!src||!dst) return;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.dataset.edge = `${e.s}-${e.t}`;
+
+    let color='#2a3a5a', dashed=false, marker='arr', width=1.4;
+    if(e.type==='call')  { color='#3d6aab'; marker='arr-call'; width=1.8; }
+    if(e.type==='state') { color='#f97316'; dashed=true; marker='arr-state'; width=1.8; }
+    if(e.type==='mutate'){ color='#ef4444'; dashed=true; marker='arr-mut'; width=1.8; }
+    if(e.type==='cfg')   { color='#1e2a45'; marker='arr'; width=1.2; }
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', edgePath(src, dst, i%3===1?5:i%3===2?-5:0));
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', width);
+    path.setAttribute('marker-end',`url(#${marker})`);
+    if(dashed) path.setAttribute('stroke-dasharray','5,3');
+    path.classList.add('edge-path');
+    path.style.strokeOpacity='0.8';
+    g.appendChild(path);
+    eG.appendChild(g);
+  });
+
+  // Draw nodes
+  MODULES.forEach(m=>{
+    const col = TYPE_COLOR[m.type]||'#64748b';
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.classList.add('node-group');
+    g.dataset.id = m.id;
+    g.setAttribute('transform',`translate(${m.x},${m.y})`);
+
+    // Glow circle (ring)
+    const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    ring.setAttribute('r', m.r+4);
+    ring.setAttribute('fill','none');
+    ring.setAttribute('stroke', col);
+    ring.setAttribute('stroke-width','1');
+    ring.setAttribute('opacity','0.15');
+    g.appendChild(ring);
+
+    // Main circle
+    const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circ.classList.add('node-bg');
+    circ.setAttribute('r', m.r);
+    circ.setAttribute('fill', col+'26');
+    circ.setAttribute('stroke', col);
+    circ.setAttribute('stroke-width','2');
+    g.appendChild(circ);
+
+    // Label (two lines)
+    const parts = m.file.replace('.py','').split('/');
+    const lbl1 = parts.length>1 ? parts[0]+'/' : '';
+    const lbl2 = parts[parts.length-1];
+    if(lbl1){
+      const t1 = document.createElementNS('http://www.w3.org/2000/svg','text');
+      t1.classList.add('node-label');
+      t1.setAttribute('y', lbl1 ? '-5' : '0');
+      t1.setAttribute('font-size','8.5');
+      t1.setAttribute('fill', col+'99');
+      t1.textContent = lbl1;
+      g.appendChild(t1);
+    }
+    const t2 = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t2.classList.add('node-label');
+    t2.setAttribute('y', lbl1 ? '6' : '0');
+    t2.setAttribute('font-size','9.5');
+    t2.setAttribute('font-weight','700');
+    t2.setAttribute('fill', col);
+    t2.textContent = lbl2;
+    g.appendChild(t2);
+
+    // LOC badge (bottom)
+    const locTxt = document.createElementNS('http://www.w3.org/2000/svg','text');
+    locTxt.setAttribute('text-anchor','middle');
+    locTxt.setAttribute('y', m.r+12);
+    locTxt.setAttribute('font-size','8');
+    locTxt.setAttribute('fill','#4d6090');
+    locTxt.setAttribute('font-family','monospace');
+    locTxt.textContent = m.lines+'L';
+    g.appendChild(locTxt);
+
+    // Issue badge (top-right)
+    if(m.issues.length>0){
+      const badgeCx = m.r*0.7, badgeCy = -m.r*0.7;
+      const badgeR  = 7.5;
+      const bc = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      bc.setAttribute('cx', badgeCx);
+      bc.setAttribute('cy', badgeCy);
+      bc.setAttribute('r',  badgeR);
+      const severity = m.issues.some(i=>i.sev==='high') ? '#ef4444' : m.issues.some(i=>i.sev==='med') ? '#f97316' : '#64748b';
+      bc.setAttribute('fill', severity);
+      g.appendChild(bc);
+      const bt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      bt.setAttribute('x', badgeCx);
+      bt.setAttribute('y', badgeCy);
+      bt.setAttribute('text-anchor','middle');
+      bt.setAttribute('dominant-baseline','middle');
+      bt.setAttribute('font-size','7.5');
+      bt.setAttribute('font-weight','800');
+      bt.setAttribute('fill','#fff');
+      bt.setAttribute('font-family','monospace');
+      bt.textContent = m.issues.length;
+      g.appendChild(bt);
+    }
+
+    g.addEventListener('click', ()=>showDetail(m));
+    nG.appendChild(g);
+  });
+}
+
+// ════════════════════════════════════════════════════════
+//  DETAIL PANEL
+// ════════════════════════════════════════════════════════
+
+let selectedId = null;
+
+function showDetail(m){
+  // Deselect previous
+  document.querySelectorAll('.node-group').forEach(g=>g.classList.remove('selected'));
+  document.querySelector(`.node-group[data-id="${m.id}"]`)?.classList.add('selected');
+  selectedId = m.id;
+
+  const col = TYPE_COLOR[m.type]||'#64748b';
+  const highCount = m.issues.filter(i=>i.sev==='high').length;
+  const medCount  = m.issues.filter(i=>i.sev==='med').length;
+
+  // Quality score 0–100
+  const q = Math.max(0, 100 - m.issues.length*12 - highCount*8);
+  const qCol = q>80 ? '#34d399' : q>50 ? '#fbbf24' : '#f87171';
+
+  const fnHtml = m.fns.map(f=>`
+    <div class="dp-fn">
+      <span class="dp-fn-name">${f.name}</span>
+      <span class="dp-fn-desc">${f.desc}</span>
+    </div>`).join('');
+
+  const issHtml = m.issues.length === 0
+    ? '<div style="font-size:11px;color:#34d399;padding:6px 0">✓ No issues found</div>'
+    : m.issues.map(i=>`
+      <div class="dp-issue ${i.sev}">
+        <span class="sev">${i.sev}</span>
+        <span>${i.text}</span>
+      </div>`).join('');
+
+  const depHtml = m.deps.map(d=>`<span class="dp-dep-chip">${d}</span>`).join('');
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="dp-header">
+      <div class="dp-file">${m.file}</div>
+      <div class="dp-name">${m.name}</div>
+      <span class="dp-type-badge" style="background:${col}22;color:${col};border:1px solid ${col}44">
+        ${m.type}
+      </span>
+      <div class="dp-meta">
+        <div class="dp-meta-item">
+          <div class="dp-meta-lbl">Lines</div>
+          <div class="dp-meta-val" style="color:#fbbf24">${m.lines}</div>
+        </div>
+        <div class="dp-meta-item">
+          <div class="dp-meta-lbl">Issues</div>
+          <div class="dp-meta-val" style="color:${m.issues.length>0?'#f87171':'#34d399'}">${m.issues.length}</div>
+        </div>
+        <div class="dp-meta-item">
+          <div class="dp-meta-lbl">Quality</div>
+          <div class="dp-meta-val" style="color:${qCol}">${q}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dp-section">
+      <div class="dp-section-title">Description</div>
+      <div style="font-size:11.5px;color:var(--tx2);line-height:1.6">${m.desc}</div>
+    </div>
+
+    ${m.fns.length>0 ? `<div class="dp-section">
+      <div class="dp-section-title">Functions / Exports</div>
+      ${fnHtml}
+    </div>` : ''}
+
+    ${m.deps.length>0 ? `<div class="dp-section">
+      <div class="dp-section-title">Depends On</div>
+      <div>${depHtml}</div>
+    </div>` : ''}
+
+    <div class="dp-section">
+      <div class="dp-section-title">Issues (${m.issues.length})</div>
+      ${issHtml}
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════════════
+//  MODULE CARDS
+// ════════════════════════════════════════════════════════
+
+function renderCards(){
+  const grid = document.getElementById('cards-grid');
+  const sorted = [...MODULES].sort((a,b)=>b.issues.length - a.issues.length);
+
+  grid.innerHTML = sorted.map(m=>{
+    const col = TYPE_COLOR[m.type]||'#64748b';
+    const n = m.issues.length;
+    const ibCls = `ib-${Math.min(n,7)}`;
+    const highC = m.issues.filter(i=>i.sev==='high').length;
+    const topCol = highC>0 ? '#ef4444' : n>3 ? '#f97316' : n>0 ? '#fbbf24' : '#10b981';
+    return `<div class="mod-card" style="--border-col:${topCol}" onclick="clickCard('${m.id}')">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${topCol};border-radius:var(--r) var(--r) 0 0"></div>
+      <div class="mod-card-file">${m.file}</div>
+      <div class="mod-card-name">${m.name}</div>
+      <div class="mod-card-stats">
+        <div class="mod-card-loc"><span style="color:${col}">${m.type}</span> · <span>${m.lines}L</span></div>
+        <div class="issue-badge ${ibCls}">${n}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function clickCard(id){
+  const m = getModule(id);
+  if(m){
+    showDetail(m);
+    document.getElementById('arch-svg').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+}
+
+// ════════════════════════════════════════════════════════
+//  ISSUES CATALOG
+// ════════════════════════════════════════════════════════
+
+const ALL_ISSUES = [];
+MODULES.forEach(m=>{
+  m.issues.forEach(issue=>{
+    ALL_ISSUES.push({...issue, module:m.name, file:m.file, type:m.type});
+  });
+});
+
+const FIX_HINTS = {
+  'warnings.filterwarnings("ignore")':       'Remove or replace with specific warning filters',
+  'Port 5050 is hardcoded':                   'Add PORT config key to CONFIG dict',
+  'CONFIG and CREDENTIALS mutated':           'Add a threading.Lock() for CONFIG mutations',
+  'Bare except in save_yaml':                 'Propagate exception or return error status',
+  'Hardcoded Windows path':                   'Use os.path.expanduser or a relative path',
+  'CSV download fails':                       'Add a retry loop and clear EQUITY_MAP on failure',
+  'Bare except on CSV parsing':               'Log the full traceback, not just a warning',
+  'Column detection is fragile':              'Assert required columns exist after loading',
+  'Symbols with no security_id':             'Log at INFO level when a symbol is skipped',
+  'Duck-typed Callable':                      'Add type hints and runtime assertions',
+  'HTTP errors only logged at DEBUG':        'Raise log to WARNING; add retry with backoff',
+  'No retry on transient HTTP':              'Use urllib3 Retry or tenacity decorator',
+  '3× bare except':                          'Log exception details; consider re-raising',
+  '_prev_qualified global':                  'Protect with _lock; or move into state dict',
+  'CONFIG dict is read without a lock':      'Re-use _lock or a separate config_lock',
+  '_today_candles() duplicates':             'Move helper to scanner/core.py',
+  'next_scan time shown':                    'Compute from sched_loop start, not ist_now()',
+  'Scan count incremented':                  'Increment scan count only on success',
+  'Bare except in send_new_signals':         'Log full error; return bool success status',
+  'MarkdownV2 escaping':                     'Use a proper escape function for all special chars',
+  'No authentication':                       'Add API key or session cookie auth to Flask routes',
+  'CONFIG dict mutated by Flask':            'Use a RWLock; acquire write lock in api_settings_post',
+  'save_yaml() failure is silently ignored': 'Return {"ok":false} if save_yaml returns False',
+  'No input range validation':               'Validate min/max bounds before applying to CONFIG',
+  'Bare except on int/float':                'Return HTTP 400 with error message for invalid input',
+  'XSS risk':                                'HTML-escape stock names before inserting into innerHTML',
+  'No CSRF protection':                      'Add CSRF token to all POST endpoints',
+  'Global JS variables':                     'Wrap in an IIFE or module pattern; use const/let',
+  'Inline event handlers':                   'Use addEventListener(); add a strict CSP header',
+  "fetch() errors are silently caught":      'Show an error banner in the UI when fetch fails',
+};
+
+function renderIssues(){
+  const tbody = document.getElementById('issues-tbody');
+  const sorted = [...ALL_ISSUES].sort((a,b)=>{
+    const o={high:0,med:1,low:2};
+    return (o[a.sev]||9) - (o[b.sev]||9);
+  });
+
+  tbody.innerHTML = sorted.map(issue=>{
+    const col = TYPE_COLOR[issue.type]||'#64748b';
+    const sevCls = `sev-${issue.sev}`;
+    const fixKey = Object.keys(FIX_HINTS).find(k=>issue.text.includes(k));
+    const fix = fixKey ? FIX_HINTS[fixKey] : '—';
+    return `<tr>
+      <td><span class="sev-chip ${sevCls}">${issue.sev}</span></td>
+      <td><span class="mod-chip" style="background:${col}1a;color:${col};border:1px solid ${col}33">${issue.module}</span></td>
+      <td style="font-size:11.5px;color:var(--tx2);max-width:380px">${issue.text}</td>
+      <td class="fix-col">${fix}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('issue-filter-label').textContent =
+    `all ${ALL_ISSUES.length} issues — ${ALL_ISSUES.filter(i=>i.sev==='high').length} high · ${ALL_ISSUES.filter(i=>i.sev==='med').length} medium · ${ALL_ISSUES.filter(i=>i.sev==='low').length} low`;
+}
+
+// ════════════════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════════════════
+renderGraph();
+renderCards();
+renderIssues();
+</script>
+</body>
+</html>
