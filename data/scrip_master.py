@@ -53,12 +53,13 @@ def load() -> None:
                         return c
                 return None
 
-            sid_col  = _find("SEM_SMST_SECURITY_ID", "SECURITY_ID",    "SM_SMST_SECURITY_ID")
+            sid_col  = _find("SECURITY_ID", "SEM_SMST_SECURITY_ID", "SM_SMST_SECURITY_ID")
             exch_col = _find("SEM_EXM_EXCH_ID",       "EXCH_ID",        "SEM_EXCH_ID")
             seg_col  = _find("SEM_SEGMENT",            "SEGMENT")
             inst_col = _find("SEM_INSTRUMENT_NAME",    "INSTRUMENT",     "SM_INSTRUMENT_NAME")
             sym_col  = _find("SEM_TRADING_SYMBOL",     "SM_TRADING_SYMBOL",
-                             "TRADING_SYMBOL",       "SM_SYMBOL_NAME", "SYMBOL_NAME")
+                             "TRADING_SYMBOL",       "DISPLAY_NAME",
+                             "SM_SYMBOL_NAME",       "SYMBOL_NAME")
 
             if not all([sid_col, exch_col, seg_col, inst_col, sym_col]):
                 logger.warning(
