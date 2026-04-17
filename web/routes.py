@@ -99,7 +99,7 @@ def api_settings_post():
 
 @app.route("/api/scrip-debug")
 def api_scrip_debug():
-    """Diagnostic endpoint — shows scrip master stats and sample entries."""
+    """Diagnostic endpoint — shows scrip master stats, column values, and per-stock lookup."""
     from config.stocks import ALL_STOCKS
     from scanner.runner import _eq_sid
     eq_keys   = list(scrip_master.EQUITY_MAP.keys())
@@ -107,13 +107,14 @@ def api_scrip_debug():
     hits      = [s for s in ALL_STOCKS if _eq_sid(s) is not None]
     misses    = [s for s in ALL_STOCKS if _eq_sid(s) is None]
     return jsonify({
-        "equity_map_size":  len(eq_keys),
-        "index_map_size":   len(idx_keys),
+        "equity_map_size":    len(eq_keys),
+        "index_map_size":     len(idx_keys),
         "sample_equity_keys": eq_keys[:10],
         "sample_index_keys":  idx_keys[:10],
-        "stocks_with_id":   len(hits),
-        "stocks_missing_id": len(misses),
-        "missing_samples":  misses[:20],
+        "stocks_with_id":     len(hits),
+        "stocks_missing_id":  len(misses),
+        "missing_samples":    misses[:20],
+        "load_info":          scrip_master.load_info,
     })
 
 

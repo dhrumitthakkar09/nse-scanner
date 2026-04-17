@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 EQUITY_MAP: dict[str, dict] = {}
 INDEX_MAP:  dict[str, dict] = {}
+# Populated by load() — used by /api/scrip-debug for diagnostics
+load_info: dict = {}
 
 _loaded = False
 _load_lock = threading.Lock()
@@ -64,9 +66,11 @@ def load() -> None:
                 )
                 return
 
-            # Log actual column values so format changes are immediately visible
+            # Capture column values for diagnostics (exposed via /api/scrip-debug)
+            col_vals = {}
             for col in [exch_col, seg_col, inst_col]:
-                top_vals = df[col].value_counts().head(8).index.tolist()
+                top_vals = df[col].value_counts().head(10).index.tolist()
+                col_vals[col] = top_vals
                 logger.info("  Column %-24s top values: %s", col, top_vals)
 
             def _parse(mask, exchange_seg: str, instrument_type: str) -> dict:
@@ -85,34 +89,34 @@ def load() -> None:
                         }
                 return out
 
-            # ── Equity mask: handle both old ("E") and new ("NSE_EQ") segment codes ──
-            # Dhan updated the detailed CSV to use "NSE_EQ" instead of "E" for the
-            # equity segment; try both so the filter is format-agnostic.
+            # ── Equity mask ──────────────────────────────────────────────────────
+            # Use exch=="NSE" + inst=="EQUITY" — no segment filter needed.
+            # inst=="EQUITY" already excludes FUTSTK / OPTSTK / INDEX / etc.
+            # The segment column value varies across Dhan CSV versions ("E",
+            # "NSE_EQ", etc.) so filtering on it causes the 1/198 bug.
             eq_mask = (
                 (df[exch_col] == "NSE")
-                & df[seg_col].isin(["E", "NSE_EQ"])
                 & (df[inst_col] == "EQUITY")
             )
-            n_strict = int(eq_mask.sum())
-            logger.info("Equity mask (strict): %d rows", n_strict)
+            n_match = int(eq_mask.sum())
+            logger.info("Equity mask (exch=NSE, inst=EQUITY): %d rows", n_match)
 
-            if n_strict < 50:
-                # Last-resort: NSE exchange + EQUITY instrument, ignore segment
+            if n_match < 50:
+                # Instrument column value might differ — try common variants
                 logger.warning(
-                    "Strict equity mask too narrow (%d rows); trying segment-agnostic filter",
-                    n_strict,
+                    "Equity mask returned only %d rows; trying instrument variants",
+                    n_match,
                 )
                 eq_mask = (
-                    df[exch_col].str.strip().str.upper().isin(["NSE", "NSE_EQ"])
-                    & df[inst_col].str.strip().str.upper().isin(
-                        ["EQUITY", "EQUITIES", "EQ", "NORMAL"]
-                    )
+                    df[exch_col].str.strip().str.upper().str.contains("NSE", na=False)
+                    & df[inst_col].str.strip().str.upper().str.startswith("EQ")
                 )
-                logger.info("Equity mask (fallback): %d rows", int(eq_mask.sum()))
+                n_match = int(eq_mask.sum())
+                logger.info("Equity mask (fallback startswith EQ): %d rows", n_match)
 
             eq_parsed = _parse(eq_mask, "NSE_EQ", "EQUITY")
 
-            # Clear old data before rebuilding (important for force_reload)
+            # Clear old data before rebuilding (critical for force_reload correctness)
             EQUITY_MAP.clear()
             INDEX_MAP.clear()
 
@@ -135,6 +139,17 @@ def load() -> None:
             sample_idx = list(INDEX_MAP.keys())[:5]
             logger.info("Sample equity keys : %s", sample_eq)
             logger.info("Sample index  keys : %s", sample_idx)
+
+            # Store diagnostics for /api/scrip-debug
+            load_info.update({
+                "csv_rows": len(df),
+                "exch_col": exch_col, "seg_col": seg_col,
+                "inst_col": inst_col, "sym_col": sym_col,
+                "col_values": col_vals,
+                "eq_raw_count": len(eq_parsed),
+                "equity_map_size": len(EQUITY_MAP),
+                "index_map_size": len(INDEX_MAP),
+            })
         except Exception as exc:
             logger.warning("Scrip master load failed: %s", exc)
         finally:

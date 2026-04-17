@@ -952,19 +952,25 @@ function togglePw(id,btn){
 // ─────────────────── SCRIP MASTER ───────────────
 async function checkScrip(){
   const res=document.getElementById('scrip-result');
-  const toastEl=document.getElementById('t-scrip');
   res.style.display='block'; res.textContent='Fetching…';
   try{
     const r=await fetch('/api/scrip-debug'); const d=await r.json();
-    const ok=d.stocks_with_id>1;
+    const ok=d.stocks_with_id>50;
+    const li=d.load_info||{};
+    const cv=li.col_values||{};
+    let colLines='';
+    for(const [col,vals] of Object.entries(cv)){
+      colLines+=`  ${col}:\n    ${vals.join(', ')}\n`;
+    }
     res.textContent=
-      `Equity map size : ${d.equity_map_size}\n`+
-      `Index map size  : ${d.index_map_size}\n`+
-      `Sample equity   : ${(d.sample_equity_keys||[]).join(', ')}\n`+
-      `Stocks with ID  : ${d.stocks_with_id} / ${d.stocks_with_id+d.stocks_missing_id}\n`+
-      (d.missing_samples&&d.missing_samples.length?`Missing symbols : ${d.missing_samples.join(', ')}`:'');
+      `Equity map : ${d.equity_map_size} entries  |  Index map: ${d.index_map_size} entries\n`+
+      `CSV rows   : ${li.csv_rows||'?'}  |  Raw eq matches: ${li.eq_raw_count||'?'}\n`+
+      `Stocks with security_id: ${d.stocks_with_id} / ${d.stocks_with_id+d.stocks_missing_id}\n`+
+      (d.missing_samples&&d.missing_samples.length?`Missing : ${d.missing_samples.join(', ')}\n`:'')+
+      `\nColumn values in CSV:\n${colLines}`+
+      `\nSample equity keys: ${(d.sample_equity_keys||[]).join(', ')}`;
     res.style.color=ok?'var(--gr)':'var(--rd)';
-    toast('t-scrip', ok?`✓ ${d.stocks_with_id} stocks resolved`:`⚠ Only ${d.stocks_with_id} resolved — click Force Reload`, ok);
+    toast('t-scrip', ok?`✓ ${d.stocks_with_id} stocks resolved`:`⚠ Only ${d.stocks_with_id} resolved`, ok);
   }catch(e){res.textContent='Error: '+e; res.style.color='var(--rd)';}
 }
 async function reloadScrip(){
