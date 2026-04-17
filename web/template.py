@@ -993,6 +993,8 @@ async function reloadScrip(){
         `sym_col detected as: "${li.sym_col||'?'}"\n`+
         `Stocks with ID: ${d.stocks_with_id} / ${d.total}\n`+
         (d.missing_sample&&d.missing_sample.length?`Still missing : ${d.missing_sample.join(', ')}\n`:'')+
+        (d.near_matches&&Object.keys(d.near_matches).length?
+          `\nNear-matches for missing:\n`+Object.entries(d.near_matches).map(([k,v])=>`  ${k}: ${v.join(', ')||'(none)'}`).join('\n')+'\n':'')+
         `\nSample symbols from CSV equity rows:\n  ${(li.sample_eq_syms||[]).join(', ')}\n`+
         `\nALL CSV columns:\n  ${(li.all_columns||[]).join(', ')}\n`+
         `\nColumn values in CSV:\n${colLines}`;

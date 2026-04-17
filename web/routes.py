@@ -127,11 +127,18 @@ def api_reload_scrip():
         from scanner.runner import _eq_sid
         hits   = sum(1 for s in ALL_STOCKS if _eq_sid(s) is not None)
         misses = [s for s in ALL_STOCKS if _eq_sid(s) is None]
+        # Near-matches: show EQUITY_MAP keys that start with each missing symbol's prefix
+        near = {}
+        for m in misses[:20]:
+            pfx = m[:4].upper()
+            candidates = sorted(k for k in scrip_master.EQUITY_MAP if k.startswith(pfx))[:5]
+            near[m] = candidates
         return jsonify({
             "ok":             True,
             "stocks_with_id": hits,
             "total":          len(ALL_STOCKS),
-            "missing_sample": misses[:10],
+            "missing_sample": misses[:20],
+            "near_matches":   near,
             "load_info":      scrip_master.load_info,
         })
     except Exception as exc:

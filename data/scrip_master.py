@@ -24,18 +24,14 @@ logger = logging.getLogger(__name__)
 EQUITY_MAP: dict[str, dict] = {}
 INDEX_MAP:  dict[str, dict] = {}
 # Populated by load() — used by /api/scrip-debug for diagnostics
-load_info: dict = {}
+load_info:    dict = {}
+# Built at load time: normalized-key → info for fuzzy fallback (O(1) lookup)
+_NORM_MAP:    dict[str, dict] = {}
 
 # Known symbol differences between our ALL_STOCKS list and Dhan CSV tickers.
-# Key = our symbol, Value = Dhan CSV symbol. Extend as new mismatches are found.
 SYMBOL_ALIASES: dict[str, str] = {
     "ZENSAR":     "ZENSARTECH",
     "LTIM":       "LTIMINDTEC",
-    "J&KBANK":    "J&KBANK",      # & should survive, but add explicitly
-    "M&M":        "M&M",
-    "M&MFIN":     "M&MFIN",
-    "BAJAJ-AUTO": "BAJAJ-AUTO",
-    "MCDOWELL-N": "MCDOWELL-N",
 }
 
 _loaded = False
@@ -158,12 +154,35 @@ def load() -> None:
             # Clear old data before rebuilding (critical for force_reload correctness)
             EQUITY_MAP.clear()
             INDEX_MAP.clear()
+            _NORM_MAP.clear()
 
             # Normalise symbols: store both "HDFCBANK-EQ" and "HDFCBANK" as keys
             for sym, info in merged_eq.items():
                 EQUITY_MAP[sym] = info
                 if sym.endswith("-EQ"):
                     EQUITY_MAP[sym[:-3]] = info
+
+            # Build fuzzy-lookup map: strip common company-name suffixes + spaces
+            # so "Zomato Limited" → "ZOMATO", "DCB Bank Ltd" → "DCBBANK"
+            _SUFFIXES = [
+                " LIMITED", " LTD.", " LTD", " PRIVATE LIMITED", " PVT LTD",
+                " BANK", " SMALL FINANCE BANK", " FINANCIAL SERVICES",
+                " FINANCIAL", " TECHNOLOGIES", " TECHNOLOGY",
+                " INDUSTRIES", " ENTERPRISES", " SOLUTIONS",
+                " SERVICES", " PRODUCTS", " CORPORATION", " COMPANY",
+            ]
+            def _norm(s: str) -> str:
+                s = s.strip().upper()
+                for sfx in _SUFFIXES:
+                    if s.endswith(sfx):
+                        s = s[: -len(sfx)].strip()
+                        break
+                return s.replace(" ", "").replace(".", "").replace("&", "AND")
+
+            for sym, info in EQUITY_MAP.items():
+                nk = _norm(sym)
+                if nk and nk not in _NORM_MAP:
+                    _NORM_MAP[nk] = info
 
             idx_mask = (df[exch_col] == "NSE") & (df[inst_col] == "INDEX")
             if not idx_mask.any():
@@ -227,17 +246,41 @@ def force_reload() -> None:
 
 def equity_info(symbol: str) -> dict | None:
     """Return Dhan API params for an equity symbol, or None.
-    Tries the exact symbol, then with a '-EQ' suffix, then known aliases.
+    Lookup order:
+      1. Exact match in EQUITY_MAP
+      2. Symbol + "-EQ" suffix
+      3. Known alias (SYMBOL_ALIASES)
+      4. Normalised fuzzy match (_NORM_MAP) — handles "Zomato Limited" → "ZOMATO"
     """
     key = symbol.upper()
+    # 1 & 2 — direct
     result = EQUITY_MAP.get(key) or EQUITY_MAP.get(key + "-EQ")
     if result:
         return result
-    # Try known alias (e.g. our "ZENSAR" → Dhan's "ZENSARTECH")
+    # 3 — known alias
     alias = SYMBOL_ALIASES.get(key)
     if alias:
         result = EQUITY_MAP.get(alias.upper()) or EQUITY_MAP.get(alias.upper() + "-EQ")
-    return result
+        if result:
+            return result
+    # 4 — normalised fuzzy (strips company suffixes then removes spaces)
+    _SUFFIXES_LOCAL = [
+        " LIMITED", " LTD.", " LTD", " PRIVATE LIMITED", " PVT LTD",
+        " BANK", " SMALL FINANCE BANK", " FINANCIAL SERVICES",
+        " FINANCIAL", " TECHNOLOGIES", " TECHNOLOGY",
+        " INDUSTRIES", " ENTERPRISES", " SOLUTIONS",
+        " SERVICES", " PRODUCTS", " CORPORATION", " COMPANY",
+    ]
+    def _norm(s: str) -> str:
+        s = s.strip().upper()
+        for sfx in _SUFFIXES_LOCAL:
+            if s.endswith(sfx):
+                s = s[: -len(sfx)].strip()
+                break
+        return s.replace(" ", "").replace(".", "").replace("&", "AND")
+
+    nk = _norm(key)
+    return _NORM_MAP.get(nk)
 
 
 def index_info(name: str) -> dict | None:
