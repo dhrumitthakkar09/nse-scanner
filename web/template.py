@@ -994,6 +994,7 @@ async function reloadScrip(){
         `Stocks with ID: ${d.stocks_with_id} / ${d.total}\n`+
         (d.missing_sample&&d.missing_sample.length?`Still missing : ${d.missing_sample.join(', ')}\n`:'')+
         `\nSample symbols from CSV equity rows:\n  ${(li.sample_eq_syms||[]).join(', ')}\n`+
+        `\nALL CSV columns:\n  ${(li.all_columns||[]).join(', ')}\n`+
         `\nColumn values in CSV:\n${colLines}`;
     }else{
       res.textContent=`Reload failed: ${d.error}`;

@@ -45,6 +45,7 @@ def load() -> None:
             df   = pd.read_csv(StringIO(resp.text), low_memory=False)
             cols = set(df.columns)
             logger.info("CSV: %d rows, %d cols", len(df), len(cols))
+            logger.info("All columns: %s", sorted(cols))
 
             def _find(*cands: str) -> str | None:
                 for c in cands:
@@ -148,6 +149,7 @@ def load() -> None:
             # Store diagnostics for /api/scrip-debug
             load_info.update({
                 "csv_rows":        len(df),
+                "all_columns":     sorted(list(cols)),
                 "exch_col":        exch_col,
                 "seg_col":         seg_col,
                 "inst_col":        inst_col,
