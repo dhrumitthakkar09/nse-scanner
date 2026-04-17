@@ -103,14 +103,14 @@ def load() -> None:
                         }
                 return out
 
-            # ── Build equity map ─────────────────────────────────────────────────
-            # Strategy A: FUTSTK rows — definitive for F&O stocks.
-            #   UNDERLYING_SYMBOL     = NSE ticker (e.g. "TCS", "INFY")
-            #   UNDERLYING_SECURITY_ID = equity cash-segment security ID
-            # Since ALL_STOCKS are F&O stocks, this covers the entire universe.
-            und_sym_col = "UNDERLYING_SYMBOL"     if "UNDERLYING_SYMBOL"     in cols else None
+            # ── Build equity map (two strategies, merged) ────────────────────────
+            und_sym_col = "UNDERLYING_SYMBOL"      if "UNDERLYING_SYMBOL"      in cols else None
             und_sid_col = "UNDERLYING_SECURITY_ID" if "UNDERLYING_SECURITY_ID" in cols else None
+            series_col  = "SERIES"                 if "SERIES"                 in cols else None
 
+            # Strategy A — FUTSTK + OPTSTK underlying data.
+            # UNDERLYING_SYMBOL = exact NSE ticker; UNDERLYING_SECURITY_ID = equity cash security_id.
+            # Best for stocks actively traded in F&O.
             fno_equities: dict = {}
             if und_sym_col and und_sid_col:
                 fno_df = (
@@ -136,15 +136,23 @@ def load() -> None:
                             "exchange_seg": "NSE_EQ",
                             "instrument":   "EQUITY",
                         }
-                logger.info("FNO equity map (FUTSTK UNDERLYING): %d entries", len(fno_equities))
+                logger.info("Strategy A (FUTSTK+OPTSTK underlying): %d entries", len(fno_equities))
 
-            # Strategy B: EQUITY rows — fallback / supplements non-F&O stocks.
-            eq_mask  = (df[exch_col] == "NSE") & (df[inst_col] == "EQUITY")
+            # Strategy B — EQUITY rows filtered to SERIES=="EQ".
+            # For EQ-series equities, DISPLAY_NAME IS the short NSE ticker (ZOMATO, DCBBANK…).
+            # Catches stocks that have no futures/options (small-cap banks, newer listings).
+            if series_col:
+                eq_mask = (
+                    (df[exch_col] == "NSE")
+                    & (df[inst_col] == "EQUITY")
+                    & (df[series_col] == "EQ")
+                )
+            else:
+                eq_mask = (df[exch_col] == "NSE") & (df[inst_col] == "EQUITY")
             eq_parsed = _parse(eq_mask, "NSE_EQ", "EQUITY")
-            logger.info("Equity map from EQUITY rows: %d entries", len(eq_parsed))
+            logger.info("Strategy B (EQUITY+SERIES=EQ): %d entries", len(eq_parsed))
 
-            # Merge: FUTSTK data overrides EQUITY rows for F&O stocks
-            # (FUTSTK.UNDERLYING_SYMBOL is the exact NSE ticker, no name ambiguity)
+            # Merge: Strategy A takes priority (FUTSTK underlying is unambiguous)
             merged_eq = {**eq_parsed, **fno_equities}
 
             # Clear old data before rebuilding (critical for force_reload correctness)
@@ -179,19 +187,20 @@ def load() -> None:
 
             # Store diagnostics for /api/scrip-debug
             load_info.update({
-                "csv_rows":        len(df),
-                "all_columns":     sorted(list(cols)),
-                "exch_col":        exch_col,
-                "seg_col":         seg_col,
-                "inst_col":        inst_col,
-                "sym_col":         sym_col,
-                "col_values":      col_vals,
-                "fno_eq_count":    len(fno_equities),
-                "eq_raw_count":    len(eq_parsed),
-                "eq_merged_count": len(merged_eq),
-                "equity_map_size": len(EQUITY_MAP),
-                "index_map_size":  len(INDEX_MAP),
-                "sample_eq_syms":  [str(s) for s in sample_syms],
+                "csv_rows":          len(df),
+                "all_columns":       sorted(list(cols)),
+                "exch_col":          exch_col,
+                "seg_col":           seg_col,
+                "inst_col":          inst_col,
+                "sym_col":           sym_col,
+                "series_col":        series_col,
+                "col_values":        col_vals,
+                "fno_eq_count":      len(fno_equities),
+                "eq_series_count":   len(eq_parsed),
+                "eq_merged_count":   len(merged_eq),
+                "equity_map_size":   len(EQUITY_MAP),
+                "index_map_size":    len(INDEX_MAP),
+                "sample_eq_syms":    [str(s) for s in sample_syms],
             })
         except Exception as exc:
             logger.warning("Scrip master load failed: %s", exc)
