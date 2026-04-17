@@ -990,8 +990,10 @@ async function reloadScrip(){
       res.textContent=
         `Reload complete.\n`+
         `CSV rows   : ${li.csv_rows||'?'}  |  Raw eq matches: ${li.eq_raw_count||'?'}\n`+
+        `sym_col detected as: "${li.sym_col||'?'}"\n`+
         `Stocks with ID: ${d.stocks_with_id} / ${d.total}\n`+
         (d.missing_sample&&d.missing_sample.length?`Still missing : ${d.missing_sample.join(', ')}\n`:'')+
+        `\nSample symbols from CSV equity rows:\n  ${(li.sample_eq_syms||[]).join(', ')}\n`+
         `\nColumn values in CSV:\n${colLines}`;
     }else{
       res.textContent=`Reload failed: ${d.error}`;

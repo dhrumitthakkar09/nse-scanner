@@ -140,15 +140,23 @@ def load() -> None:
             logger.info("Sample equity keys : %s", sample_eq)
             logger.info("Sample index  keys : %s", sample_idx)
 
+            # Capture sample equity symbols so mismatches are easy to spot
+            eq_df = df[eq_mask]
+            sample_syms = eq_df[sym_col].dropna().unique()[:20].tolist()
+            logger.info("Sample equity symbols from CSV: %s", sample_syms[:10])
+
             # Store diagnostics for /api/scrip-debug
             load_info.update({
-                "csv_rows": len(df),
-                "exch_col": exch_col, "seg_col": seg_col,
-                "inst_col": inst_col, "sym_col": sym_col,
-                "col_values": col_vals,
-                "eq_raw_count": len(eq_parsed),
+                "csv_rows":        len(df),
+                "exch_col":        exch_col,
+                "seg_col":         seg_col,
+                "inst_col":        inst_col,
+                "sym_col":         sym_col,
+                "col_values":      col_vals,
+                "eq_raw_count":    len(eq_parsed),
                 "equity_map_size": len(EQUITY_MAP),
-                "index_map_size": len(INDEX_MAP),
+                "index_map_size":  len(INDEX_MAP),
+                "sample_eq_syms":  [str(s) for s in sample_syms],
             })
         except Exception as exc:
             logger.warning("Scrip master load failed: %s", exc)
