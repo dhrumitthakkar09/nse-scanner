@@ -26,6 +26,18 @@ INDEX_MAP:  dict[str, dict] = {}
 # Populated by load() — used by /api/scrip-debug for diagnostics
 load_info: dict = {}
 
+# Known symbol differences between our ALL_STOCKS list and Dhan CSV tickers.
+# Key = our symbol, Value = Dhan CSV symbol. Extend as new mismatches are found.
+SYMBOL_ALIASES: dict[str, str] = {
+    "ZENSAR":     "ZENSARTECH",
+    "LTIM":       "LTIMINDTEC",
+    "J&KBANK":    "J&KBANK",      # & should survive, but add explicitly
+    "M&M":        "M&M",
+    "M&MFIN":     "M&MFIN",
+    "BAJAJ-AUTO": "BAJAJ-AUTO",
+    "MCDOWELL-N": "MCDOWELL-N",
+}
+
 _loaded = False
 _load_lock = threading.Lock()
 
@@ -102,7 +114,10 @@ def load() -> None:
             fno_equities: dict = {}
             if und_sym_col and und_sid_col:
                 fno_df = (
-                    df[(df[exch_col] == "NSE") & (df[inst_col] == "FUTSTK")]
+                    df[
+                        (df[exch_col] == "NSE")
+                        & df[inst_col].isin(["FUTSTK", "OPTSTK"])
+                    ]
                     [[und_sym_col, und_sid_col]]
                     .copy()
                     .dropna(subset=[und_sym_col])
@@ -203,11 +218,17 @@ def force_reload() -> None:
 
 def equity_info(symbol: str) -> dict | None:
     """Return Dhan API params for an equity symbol, or None.
-    Tries the exact symbol first, then with a '-EQ' suffix appended,
-    to handle both Dhan CSV formats ('HDFCBANK' and 'HDFCBANK-EQ').
+    Tries the exact symbol, then with a '-EQ' suffix, then known aliases.
     """
     key = symbol.upper()
-    return EQUITY_MAP.get(key) or EQUITY_MAP.get(key + "-EQ")
+    result = EQUITY_MAP.get(key) or EQUITY_MAP.get(key + "-EQ")
+    if result:
+        return result
+    # Try known alias (e.g. our "ZENSAR" → Dhan's "ZENSARTECH")
+    alias = SYMBOL_ALIASES.get(key)
+    if alias:
+        result = EQUITY_MAP.get(alias.upper()) or EQUITY_MAP.get(alias.upper() + "-EQ")
+    return result
 
 
 def index_info(name: str) -> dict | None:
