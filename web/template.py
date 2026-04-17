@@ -989,7 +989,7 @@ async function reloadScrip(){
       }
       res.textContent=
         `Reload complete.\n`+
-        `CSV rows   : ${li.csv_rows||'?'}  |  Raw eq matches: ${li.eq_raw_count||'?'}\n`+
+        `CSV rows   : ${li.csv_rows||'?'}  |  FNO underlying: ${li.fno_eq_count||'?'}  |  Eq rows: ${li.eq_raw_count||'?'}  |  Merged: ${li.eq_merged_count||'?'}\n`+
         `sym_col detected as: "${li.sym_col||'?'}"\n`+
         `Stocks with ID: ${d.stocks_with_id} / ${d.total}\n`+
         (d.missing_sample&&d.missing_sample.length?`Still missing : ${d.missing_sample.join(', ')}\n`:'')+

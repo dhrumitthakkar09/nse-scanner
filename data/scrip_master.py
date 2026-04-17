@@ -91,39 +91,53 @@ def load() -> None:
                         }
                 return out
 
-            # ── Equity mask ──────────────────────────────────────────────────────
-            # Use exch=="NSE" + inst=="EQUITY" — no segment filter needed.
-            # inst=="EQUITY" already excludes FUTSTK / OPTSTK / INDEX / etc.
-            # The segment column value varies across Dhan CSV versions ("E",
-            # "NSE_EQ", etc.) so filtering on it causes the 1/198 bug.
-            eq_mask = (
-                (df[exch_col] == "NSE")
-                & (df[inst_col] == "EQUITY")
-            )
-            n_match = int(eq_mask.sum())
-            logger.info("Equity mask (exch=NSE, inst=EQUITY): %d rows", n_match)
+            # ── Build equity map ─────────────────────────────────────────────────
+            # Strategy A: FUTSTK rows — definitive for F&O stocks.
+            #   UNDERLYING_SYMBOL     = NSE ticker (e.g. "TCS", "INFY")
+            #   UNDERLYING_SECURITY_ID = equity cash-segment security ID
+            # Since ALL_STOCKS are F&O stocks, this covers the entire universe.
+            und_sym_col = "UNDERLYING_SYMBOL"     if "UNDERLYING_SYMBOL"     in cols else None
+            und_sid_col = "UNDERLYING_SECURITY_ID" if "UNDERLYING_SECURITY_ID" in cols else None
 
-            if n_match < 50:
-                # Instrument column value might differ — try common variants
-                logger.warning(
-                    "Equity mask returned only %d rows; trying instrument variants",
-                    n_match,
+            fno_equities: dict = {}
+            if und_sym_col and und_sid_col:
+                fno_df = (
+                    df[(df[exch_col] == "NSE") & (df[inst_col] == "FUTSTK")]
+                    [[und_sym_col, und_sid_col]]
+                    .copy()
+                    .dropna(subset=[und_sym_col])
                 )
-                eq_mask = (
-                    df[exch_col].str.strip().str.upper().str.contains("NSE", na=False)
-                    & df[inst_col].str.strip().str.upper().str.startswith("EQ")
-                )
-                n_match = int(eq_mask.sum())
-                logger.info("Equity mask (fallback startswith EQ): %d rows", n_match)
+                fno_df[und_sym_col] = fno_df[und_sym_col].str.strip().str.upper()
+                fno_df = fno_df.drop_duplicates(subset=[und_sym_col])
+                for _, row in fno_df.iterrows():
+                    sym = row[und_sym_col]
+                    try:
+                        sid = str(int(float(row[und_sid_col])))
+                    except (ValueError, TypeError):
+                        continue
+                    if sym and sid not in ("0", "nan"):
+                        fno_equities[sym] = {
+                            "security_id":  sid,
+                            "exchange_seg": "NSE_EQ",
+                            "instrument":   "EQUITY",
+                        }
+                logger.info("FNO equity map (FUTSTK UNDERLYING): %d entries", len(fno_equities))
 
+            # Strategy B: EQUITY rows — fallback / supplements non-F&O stocks.
+            eq_mask  = (df[exch_col] == "NSE") & (df[inst_col] == "EQUITY")
             eq_parsed = _parse(eq_mask, "NSE_EQ", "EQUITY")
+            logger.info("Equity map from EQUITY rows: %d entries", len(eq_parsed))
+
+            # Merge: FUTSTK data overrides EQUITY rows for F&O stocks
+            # (FUTSTK.UNDERLYING_SYMBOL is the exact NSE ticker, no name ambiguity)
+            merged_eq = {**eq_parsed, **fno_equities}
 
             # Clear old data before rebuilding (critical for force_reload correctness)
             EQUITY_MAP.clear()
             INDEX_MAP.clear()
 
             # Normalise symbols: store both "HDFCBANK-EQ" and "HDFCBANK" as keys
-            for sym, info in eq_parsed.items():
+            for sym, info in merged_eq.items():
                 EQUITY_MAP[sym] = info
                 if sym.endswith("-EQ"):
                     EQUITY_MAP[sym[:-3]] = info
@@ -134,8 +148,8 @@ def load() -> None:
             INDEX_MAP.update(_parse(idx_mask, "IDX_I", "INDEX"))
 
             logger.info(
-                "Scrip master loaded: %d equities (%d raw), %d indices",
-                len(EQUITY_MAP), len(eq_parsed), len(INDEX_MAP),
+                "Scrip master loaded: %d equities (%d merged), %d indices",
+                len(EQUITY_MAP), len(merged_eq), len(INDEX_MAP),
             )
             sample_eq  = list(EQUITY_MAP.keys())[:8]
             sample_idx = list(INDEX_MAP.keys())[:5]
@@ -143,9 +157,10 @@ def load() -> None:
             logger.info("Sample index  keys : %s", sample_idx)
 
             # Capture sample equity symbols so mismatches are easy to spot
-            eq_df = df[eq_mask]
-            sample_syms = eq_df[sym_col].dropna().unique()[:20].tolist()
-            logger.info("Sample equity symbols from CSV: %s", sample_syms[:10])
+            eq_df    = df[eq_mask]
+            fno_syms = list(fno_equities.keys())[:10]
+            sample_syms = fno_syms if fno_syms else eq_df[sym_col].dropna().unique()[:10].tolist()
+            logger.info("Sample equity symbols: %s", sample_syms)
 
             # Store diagnostics for /api/scrip-debug
             load_info.update({
@@ -156,7 +171,9 @@ def load() -> None:
                 "inst_col":        inst_col,
                 "sym_col":         sym_col,
                 "col_values":      col_vals,
+                "fno_eq_count":    len(fno_equities),
                 "eq_raw_count":    len(eq_parsed),
+                "eq_merged_count": len(merged_eq),
                 "equity_map_size": len(EQUITY_MAP),
                 "index_map_size":  len(INDEX_MAP),
                 "sample_eq_syms":  [str(s) for s in sample_syms],
