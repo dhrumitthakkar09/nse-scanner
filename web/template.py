@@ -627,13 +627,26 @@ function showTab(t){
 // ────────────────── SECTOR STRIP ─────────────────
 function renderStrip(sectors){
   const el = document.getElementById('strip');
-  const t  = sectors.filter(s=>s.trending).length;
+  // A sector is "active" if it's ATH-trending OR (ATH unavailable and intraday > +0.3%)
+  const isActive = s => s.trending || (s.dist_pct==null && s.intraday_chg!=null && s.intraday_chg>=0.3);
+  const t = sectors.filter(isActive).length;
   document.getElementById('stripBadge').textContent = t+' trending';
   if(!sectors.length){ el.innerHTML='<div class="empty"><div class="e-sub">No sector data</div></div>'; return; }
   el.innerHTML = sectors.map(s=>{
-    const col = dCol(s.dist_pct);
-    const pct = s.dist_pct!=null ? s.dist_pct.toFixed(1)+'%' : '—';
-    return `<div class="sc-chip ${s.trending?'tr':''}">
+    const active = isActive(s);
+    // Show ATH distance when available, else show intraday % change
+    let pct, col;
+    if(s.dist_pct!=null){
+      pct = s.dist_pct.toFixed(1)+'%';
+      col = dCol(s.dist_pct);
+    } else if(s.intraday_chg!=null){
+      pct = (s.intraday_chg>=0?'+':'')+s.intraday_chg.toFixed(2)+'%';
+      col = s.intraday_chg>=0 ? 'var(--gr)' : 'var(--rd)';
+    } else {
+      pct = '—';
+      col = 'var(--tx3)';
+    }
+    return `<div class="sc-chip ${active?'tr':''}">
       <div class="sc-chip-name">${s.sector}</div>
       <div class="sc-chip-pct" style="color:${col}">${pct}</div>
     </div>`;

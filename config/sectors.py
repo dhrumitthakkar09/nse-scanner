@@ -8,7 +8,7 @@ Dhan scrip master CSV at scan time.
 SECTOR_INDICES: dict[str, str] = {
     "IT":             "NIFTY IT",
     "Bank":           "NIFTY BANK",
-    "Financial Svcs": "NIFTY FIN SERVICE",
+    "Financial Svcs": "NIFTY FINANCIAL SERVICES",
     "Auto":           "NIFTY AUTO",
     "Pharma":         "NIFTY PHARMA",
     "FMCG":           "NIFTY FMCG",

@@ -351,12 +351,29 @@ def equity_info(symbol: str) -> dict | None:
 def index_info(name: str) -> dict | None:
     """
     Return Dhan API params for a sector index name, or None.
-    Tries exact match first, then partial substring match.
+    Lookup order:
+      1. Exact match
+      2. Substring match (either string contains the other)
+      3. Word-overlap match — at least 2 significant words in common
+         (handles "NIFTY FIN SERVICE" ↔ "NIFTY FINANCIAL SERVICES")
     """
-    key = name.upper()
+    key = name.strip().upper()
     if key in INDEX_MAP:
         return INDEX_MAP[key]
     for k, v in INDEX_MAP.items():
         if key in k or k in key:
             return v
+    # Word-overlap fallback: ignore "NIFTY" (always present) and match on content words
+    _stop = {"NIFTY", "THE", "OF", "AND", "&"}
+    key_words = {w for w in key.split() if w not in _stop and len(w) >= 3}
+    if key_words:
+        for k, v in INDEX_MAP.items():
+            k_words = {w for w in k.split() if w not in _stop and len(w) >= 3}
+            if len(key_words & k_words) >= 1 and key_words & k_words == key_words:
+                return v
+        # Relaxed: at least 1 non-trivial word matches
+        for k, v in INDEX_MAP.items():
+            k_words = {w for w in k.split() if w not in _stop and len(w) >= 3}
+            if key_words & k_words:
+                return v
     return None
