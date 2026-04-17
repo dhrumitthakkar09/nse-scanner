@@ -80,11 +80,17 @@ def run_scan() -> None:
         )
 
         # ── 2/4  Sector intraday → 75-min ─────────────────────────
+        no_sid = [n for n in idx_names if not _idx_sid(n)]
+        if no_sid:
+            _log(f"   ⚠ No security_id for indices: {', '.join(no_sid)}")
         _log("2/4 — Sector intraday (15-min → 75-min)…")
         raw_s = fetcher.fetch_intraday_ohlcv(
             idx_names, _idx_seg, _idx_ins, _idx_sid,
             days_back=CONFIG["intraday_lookback_days"],
         )
+        no_data = [n for n in idx_names if n not in raw_s]
+        if no_data:
+            _log(f"   ⚠ No intraday data returned for: {', '.join(no_data)}")
 
         sectors = []
         for sec, idx_name in SECTOR_INDICES.items():
