@@ -122,6 +122,16 @@ def ensure() -> None:
         load()
 
 
+def force_reload() -> None:
+    """Reset the loaded flag and re-download the scrip master CSV.
+    Useful when EQUITY_MAP appears empty or stale without restarting the app.
+    """
+    global _loaded
+    with _load_lock:
+        _loaded = False
+    load()
+
+
 def equity_info(symbol: str) -> dict | None:
     """Return Dhan API params for an equity symbol, or None.
     Tries the exact symbol first, then with a '-EQ' suffix appended,

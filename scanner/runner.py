@@ -146,6 +146,12 @@ def run_scan() -> None:
         ath_k = fetcher.fetch_ath(cands, _eq_seg, _eq_ins, _eq_sid)
 
         # ── 4/4  Stock intraday data (all stocks for intraday; cands for consolidation) ─
+        no_sid = [s for s in ALL_STOCKS if not _eq_sid(s)]
+        if no_sid:
+            _log(f"   ⚠ {len(no_sid)}/{len(ALL_STOCKS)} stocks have NO security_id "
+                 f"(scrip master may need reload): {', '.join(no_sid[:6])}…")
+        else:
+            _log(f"   ✓ All {len(ALL_STOCKS)} stocks resolved in scrip master")
         _log(f"4/4 — Stock intraday scan ({len(ALL_STOCKS)} F&O stocks)…")
         raw_k = fetcher.fetch_intraday_ohlcv(
             ALL_STOCKS, _eq_seg, _eq_ins, _eq_sid,

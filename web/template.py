@@ -537,6 +537,29 @@ tbody td.r{text-align:right;}
     </div>
 
   </div>
+
+  <!-- Scrip Master Diagnostics -->
+  <div class="cfg-grid" style="margin-top:16px">
+    <div class="cfg-card" style="grid-column:1/-1">
+      <div class="cfg-head">🔍 &nbsp;Scrip Master Diagnostics</div>
+      <div class="cfg-body">
+        <div style="color:var(--tx2);font-size:12.5px;margin-bottom:10px">
+          Use this if Intraday Gainers/Losers shows very few stocks. The scrip master maps stock symbols
+          to Dhan security IDs — if it's stale or failed to load, most stocks will be skipped.
+        </div>
+        <div class="cfg-btns" style="flex-wrap:wrap;gap:8px">
+          <button class="btn btn-s" onclick="checkScrip()">Check Scrip Master</button>
+          <button class="btn btn-p" onclick="reloadScrip()">Force Reload Scrip Master</button>
+          <span class="toast" id="t-scrip"></span>
+        </div>
+        <div id="scrip-result" style="margin-top:10px;font-size:12.5px;font-family:var(--mono);
+             color:var(--tx2);background:var(--bg3);border:1px solid var(--bdr);
+             border-radius:6px;padding:10px 14px;display:none;white-space:pre-wrap;
+             line-height:1.7"></div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /settings -->
 
 </div><!-- /content -->
@@ -924,6 +947,39 @@ function togglePw(id,btn){
   const el=document.getElementById(id);
   const s=el.type==='password';
   el.type=s?'text':'password'; btn.textContent=s?'🙈':'👁';
+}
+
+// ─────────────────── SCRIP MASTER ───────────────
+async function checkScrip(){
+  const res=document.getElementById('scrip-result');
+  const toastEl=document.getElementById('t-scrip');
+  res.style.display='block'; res.textContent='Fetching…';
+  try{
+    const r=await fetch('/api/scrip-debug'); const d=await r.json();
+    const ok=d.stocks_with_id>1;
+    res.textContent=
+      `Equity map size : ${d.equity_map_size}\n`+
+      `Index map size  : ${d.index_map_size}\n`+
+      `Sample equity   : ${(d.sample_equity_keys||[]).join(', ')}\n`+
+      `Stocks with ID  : ${d.stocks_with_id} / ${d.stocks_with_id+d.stocks_missing_id}\n`+
+      (d.missing_samples&&d.missing_samples.length?`Missing symbols : ${d.missing_samples.join(', ')}`:'');
+    res.style.color=ok?'var(--gr)':'var(--rd)';
+    toast('t-scrip', ok?`✓ ${d.stocks_with_id} stocks resolved`:`⚠ Only ${d.stocks_with_id} resolved — click Force Reload`, ok);
+  }catch(e){res.textContent='Error: '+e; res.style.color='var(--rd)';}
+}
+async function reloadScrip(){
+  const res=document.getElementById('scrip-result');
+  toast('t-scrip','Reloading…',true);
+  res.style.display='block'; res.textContent='Re-downloading scrip master CSV…';
+  try{
+    const r=await fetch('/api/reload-scrip',{method:'POST'}); const d=await r.json();
+    const ok=d.ok&&d.stocks_with_id>10;
+    res.textContent=d.ok
+      ?`Reload complete.\nStocks with ID: ${d.stocks_with_id} / ${d.total}`
+      :`Reload failed: ${d.error}`;
+    res.style.color=ok?'var(--gr)':'var(--rd)';
+    toast('t-scrip', ok?`✓ ${d.stocks_with_id}/${d.total} stocks resolved`:'✗ Reload failed', ok);
+  }catch(e){res.textContent='Error: '+e; res.style.color='var(--rd)';}
 }
 
 // ─────────────────── BOOT ────────────────────────

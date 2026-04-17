@@ -10,6 +10,7 @@ import threading
 from flask import Flask, jsonify, render_template_string, request
 
 from config.settings import CONFIG, CREDENTIALS, load_yaml, save_yaml
+from data import scrip_master
 from scanner import alerts
 from scanner.runner import _lock, run_scan, state
 from web.template import HTML
@@ -92,6 +93,41 @@ def api_settings_post():
 
     save_yaml(cfg)
     return jsonify({"ok": True, "message": "Settings saved"})
+
+
+# ── Scrip master ─────────────────────────────────────────────────
+
+@app.route("/api/scrip-debug")
+def api_scrip_debug():
+    """Diagnostic endpoint — shows scrip master stats and sample entries."""
+    from config.stocks import ALL_STOCKS
+    from scanner.runner import _eq_sid
+    eq_keys   = list(scrip_master.EQUITY_MAP.keys())
+    idx_keys  = list(scrip_master.INDEX_MAP.keys())
+    hits      = [s for s in ALL_STOCKS if _eq_sid(s) is not None]
+    misses    = [s for s in ALL_STOCKS if _eq_sid(s) is None]
+    return jsonify({
+        "equity_map_size":  len(eq_keys),
+        "index_map_size":   len(idx_keys),
+        "sample_equity_keys": eq_keys[:10],
+        "sample_index_keys":  idx_keys[:10],
+        "stocks_with_id":   len(hits),
+        "stocks_missing_id": len(misses),
+        "missing_samples":  misses[:20],
+    })
+
+
+@app.route("/api/reload-scrip", methods=["POST"])
+def api_reload_scrip():
+    """Force re-download and re-parse the Dhan scrip master CSV."""
+    try:
+        scrip_master.force_reload()
+        from config.stocks import ALL_STOCKS
+        from scanner.runner import _eq_sid
+        hits = sum(1 for s in ALL_STOCKS if _eq_sid(s) is not None)
+        return jsonify({"ok": True, "stocks_with_id": hits, "total": len(ALL_STOCKS)})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)})
 
 
 # ── Telegram test ─────────────────────────────────────────────────

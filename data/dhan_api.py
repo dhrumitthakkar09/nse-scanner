@@ -85,7 +85,7 @@ def fetch_intraday(
         )
         return df.sort_index()
     except Exception as exc:
-        logger.debug("Intraday fetch failed for %s: %s", security_id, exc)
+        logger.warning("Intraday fetch failed for %s: %s", security_id, exc)
         return None
 
 
@@ -126,5 +126,5 @@ def fetch_historical(
         )
         return pd.Series(data["high"], index=idx)
     except Exception as exc:
-        logger.debug("Historical fetch failed for %s: %s", security_id, exc)
+        logger.warning("Historical fetch failed for %s: %s", security_id, exc)
         return None
