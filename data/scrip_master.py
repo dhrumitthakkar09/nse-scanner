@@ -30,8 +30,43 @@ _NORM_MAP:    dict[str, dict] = {}
 
 # Known symbol differences between our ALL_STOCKS list and Dhan CSV tickers.
 SYMBOL_ALIASES: dict[str, str] = {
-    "ZENSAR":     "ZENSARTECH",
-    "LTIM":       "LTIMINDTEC",
+    # ── Confirmed from scrip-debug near-match output ──────────────────────────
+    "APOLLOTYRE":  "APOLLO TYRES",
+    "BALKRISIND":  "BALKRISHNA INDUSTRIES",
+    "CEATLTD":     "CEAT",
+    "CENTRALBK":   "CENTRAL BANK OF INDIA",
+    "CREDITACC":   "CREDIT ACCESS GRAMEEN",
+    "HOMEFIRST":   "HOME FIRST FINANCE COMPANY",
+    "RATEGAIN":    "RATEGAIN TRAVEL",
+    "SUNDARMFIN":  "SUNDARAM FINANCE",
+    "UJJIVANSFB":  "UJJIVAN SMALL FINANCE BANK",
+    # ── ZOMATO rebranded to Eternal Ltd on NSE in 2025 ───────────────────────
+    "ZOMATO":      "ETERNAL",
+    # ── Display-name suffix vs ticker mismatches ──────────────────────────────
+    "CANFINHOME":  "CAN FIN HOMES",
+    "CSBBANK":     "CSB BANK",
+    "DCBBANK":     "DCB BANK",
+    "IOB":         "INDIAN OVERSEAS BANK",
+    "J&KBANK":     "JAMMU AND KASHMIR BANK",
+    "LTIM":        "LTI MINDTREE",
+    "M&MFIN":      "MAHINDRA AND MAHINDRA FINANCIAL",
+    "MAHABANK":    "BANK OF MAHARASHTRA",
+    "MAPMYINDIA":  "CE INFO SYSTEMS",
+    "INDIAMART":   "INDIAMART INTERMESH",
+    "KARURVYSYA":  "KARUR VYSYA BANK",
+    # ── Other known Dhan display-name differences ─────────────────────────────
+    "ZENSAR":      "ZENSAR TECHNOLOGIES",
+    "MCDOWELL-N":  "MCDOWELL AND COMPANY",
+    "BAJAJ-AUTO":  "BAJAJ AUTO",
+    "M&M":         "MAHINDRA AND MAHINDRA",
+    "INDIANB":     "INDIAN BANK",
+    "UNIONBANK":   "UNION BANK OF INDIA",
+    "IDFCFIRSTB":  "IDFC FIRST BANK",
+    "BANDHANBNK":  "BANDHAN BANK",
+    "FEDERALBNK":  "FEDERAL BANK",
+    "BANKBARODA":  "BANK OF BARODA",
+    "INDUSINDBK":  "INDUSIND BANK",
+    "KOTAKBANK":   "KOTAK MAHINDRA BANK",
 }
 
 _loaded = False

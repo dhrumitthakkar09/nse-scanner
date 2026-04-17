@@ -129,9 +129,9 @@ def api_reload_scrip():
         misses = [s for s in ALL_STOCKS if _eq_sid(s) is None]
         # Near-matches: show EQUITY_MAP keys that start with each missing symbol's prefix
         near = {}
-        for m in misses[:20]:
+        for m in misses[:30]:
             pfx = m[:4].upper()
-            candidates = sorted(k for k in scrip_master.EQUITY_MAP if k.startswith(pfx))[:5]
+            candidates = sorted(k for k in scrip_master.EQUITY_MAP if k.startswith(pfx))[:8]
             near[m] = candidates
         return jsonify({
             "ok":             True,
