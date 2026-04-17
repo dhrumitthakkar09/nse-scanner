@@ -42,6 +42,7 @@ def load() -> None:
 
             df   = pd.read_csv(StringIO(resp.text), low_memory=False)
             cols = set(df.columns)
+            logger.info("CSV: %d rows, %d cols", len(df), len(cols))
 
             def _find(*cands: str) -> str | None:
                 for c in cands:
@@ -63,6 +64,11 @@ def load() -> None:
                 )
                 return
 
+            # Log actual column values so format changes are immediately visible
+            for col in [exch_col, seg_col, inst_col]:
+                top_vals = df[col].value_counts().head(8).index.tolist()
+                logger.info("  Column %-24s top values: %s", col, top_vals)
+
             def _parse(mask, exchange_seg: str, instrument_type: str) -> dict:
                 out = {}
                 for _, row in df[mask].iterrows():
@@ -79,22 +85,42 @@ def load() -> None:
                         }
                 return out
 
+            # ── Equity mask: handle both old ("E") and new ("NSE_EQ") segment codes ──
+            # Dhan updated the detailed CSV to use "NSE_EQ" instead of "E" for the
+            # equity segment; try both so the filter is format-agnostic.
             eq_mask = (
                 (df[exch_col] == "NSE")
-                & (df[seg_col] == "E")
+                & df[seg_col].isin(["E", "NSE_EQ"])
                 & (df[inst_col] == "EQUITY")
             )
+            n_strict = int(eq_mask.sum())
+            logger.info("Equity mask (strict): %d rows", n_strict)
+
+            if n_strict < 50:
+                # Last-resort: NSE exchange + EQUITY instrument, ignore segment
+                logger.warning(
+                    "Strict equity mask too narrow (%d rows); trying segment-agnostic filter",
+                    n_strict,
+                )
+                eq_mask = (
+                    df[exch_col].str.strip().str.upper().isin(["NSE", "NSE_EQ"])
+                    & df[inst_col].str.strip().str.upper().isin(
+                        ["EQUITY", "EQUITIES", "EQ", "NORMAL"]
+                    )
+                )
+                logger.info("Equity mask (fallback): %d rows", int(eq_mask.sum()))
+
             eq_parsed = _parse(eq_mask, "NSE_EQ", "EQUITY")
-            # Normalise symbols: Dhan often uses "SYMBOL-EQ" format.
-            # Store both the raw key AND the stripped version so lookups
-            # like equity_info("HDFCBANK") work whether the CSV has
-            # "HDFCBANK" or "HDFCBANK-EQ".
-            eq_normalised = {}
+
+            # Clear old data before rebuilding (important for force_reload)
+            EQUITY_MAP.clear()
+            INDEX_MAP.clear()
+
+            # Normalise symbols: store both "HDFCBANK-EQ" and "HDFCBANK" as keys
             for sym, info in eq_parsed.items():
-                eq_normalised[sym] = info
+                EQUITY_MAP[sym] = info
                 if sym.endswith("-EQ"):
-                    eq_normalised[sym[:-3]] = info   # "HDFCBANK-EQ" → also "HDFCBANK"
-            EQUITY_MAP.update(eq_normalised)
+                    EQUITY_MAP[sym[:-3]] = info
 
             idx_mask = (df[exch_col] == "NSE") & (df[inst_col] == "INDEX")
             if not idx_mask.any():
@@ -105,8 +131,7 @@ def load() -> None:
                 "Scrip master loaded: %d equities (%d raw), %d indices",
                 len(EQUITY_MAP), len(eq_parsed), len(INDEX_MAP),
             )
-            # Log a few sample keys so mismatches are easy to spot
-            sample_eq  = list(EQUITY_MAP.keys())[:5]
+            sample_eq  = list(EQUITY_MAP.keys())[:8]
             sample_idx = list(INDEX_MAP.keys())[:5]
             logger.info("Sample equity keys : %s", sample_eq)
             logger.info("Sample index  keys : %s", sample_idx)
@@ -125,10 +150,11 @@ def ensure() -> None:
 def force_reload() -> None:
     """Reset the loaded flag and re-download the scrip master CSV.
     Useful when EQUITY_MAP appears empty or stale without restarting the app.
+    Clears both maps before rebuilding so stale entries don't survive.
     """
     global _loaded
-    with _load_lock:
-        _loaded = False
+    # Reset flag outside load()'s lock so load() will re-enter
+    _loaded = False
     load()
 
 
