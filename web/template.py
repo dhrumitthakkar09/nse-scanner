@@ -979,12 +979,25 @@ async function reloadScrip(){
   res.style.display='block'; res.textContent='Re-downloading scrip master CSV…';
   try{
     const r=await fetch('/api/reload-scrip',{method:'POST'}); const d=await r.json();
-    const ok=d.ok&&d.stocks_with_id>10;
-    res.textContent=d.ok
-      ?`Reload complete.\nStocks with ID: ${d.stocks_with_id} / ${d.total}`
-      :`Reload failed: ${d.error}`;
+    const ok=d.ok&&d.stocks_with_id>50;
+    if(d.ok){
+      const li=d.load_info||{};
+      const cv=li.col_values||{};
+      let colLines='';
+      for(const [col,vals] of Object.entries(cv)){
+        colLines+=`  ${col}:\n    ${vals.join(', ')}\n`;
+      }
+      res.textContent=
+        `Reload complete.\n`+
+        `CSV rows   : ${li.csv_rows||'?'}  |  Raw eq matches: ${li.eq_raw_count||'?'}\n`+
+        `Stocks with ID: ${d.stocks_with_id} / ${d.total}\n`+
+        (d.missing_sample&&d.missing_sample.length?`Still missing : ${d.missing_sample.join(', ')}\n`:'')+
+        `\nColumn values in CSV:\n${colLines}`;
+    }else{
+      res.textContent=`Reload failed: ${d.error}`;
+    }
     res.style.color=ok?'var(--gr)':'var(--rd)';
-    toast('t-scrip', ok?`✓ ${d.stocks_with_id}/${d.total} stocks resolved`:'✗ Reload failed', ok);
+    toast('t-scrip', ok?`✓ ${d.stocks_with_id}/${d.total} stocks resolved`:'✗ Reload failed — see details', ok);
   }catch(e){res.textContent='Error: '+e; res.style.color='var(--rd)';}
 }
 

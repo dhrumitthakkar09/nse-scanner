@@ -125,8 +125,15 @@ def api_reload_scrip():
         scrip_master.force_reload()
         from config.stocks import ALL_STOCKS
         from scanner.runner import _eq_sid
-        hits = sum(1 for s in ALL_STOCKS if _eq_sid(s) is not None)
-        return jsonify({"ok": True, "stocks_with_id": hits, "total": len(ALL_STOCKS)})
+        hits   = sum(1 for s in ALL_STOCKS if _eq_sid(s) is not None)
+        misses = [s for s in ALL_STOCKS if _eq_sid(s) is None]
+        return jsonify({
+            "ok":             True,
+            "stocks_with_id": hits,
+            "total":          len(ALL_STOCKS),
+            "missing_sample": misses[:10],
+            "load_info":      scrip_master.load_info,
+        })
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)})
 
